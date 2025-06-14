@@ -14,7 +14,7 @@ export function createSlidersForMesh(mesh, container) {
       sliderGroup.className = 'slider-group';
   
       const label = document.createElement('label');
-      label.textContent = name;
+      label.textContent = `${name} ${index}`;
   
       const slider = document.createElement('input');
       slider.type = 'range';
@@ -31,6 +31,7 @@ export function createSlidersForMesh(mesh, container) {
       sliderGroup.appendChild(slider);
       groupDiv.appendChild(sliderGroup);
     });
+    console.log(dict)
   
     container.appendChild(groupDiv);
   }
@@ -66,16 +67,41 @@ export function createSlidersForMesh(mesh, container) {
     playBtn.textContent = 'Play Animation';
     playBtn.style.marginTop = '0.5em';
     playBtn.onclick = () => {
-      try {
-        const data = JSON.parse(input.value);
-        onPlay(data);
-      } catch (e) {
-        alert('Invalid JSON format!');
-        console.error(e);
-      }
-    };
+        onPlay();
+      };
     controlsDiv.appendChild(playBtn);
   
     container.appendChild(controlsDiv);
+  }
+  
+  export function createFileInputs(container, callbacks) {
+    const { onAudioLoad, onBlendshapeLoad } = callbacks;
+  
+    const audioLabel = document.createElement('label');
+    audioLabel.textContent = 'Audio (.wav): ';
+    const audioInput = document.createElement('input');
+    audioInput.type = 'file';
+    audioInput.accept = '.wav';
+    audioInput.onchange = () => {
+      const file = audioInput.files[0];
+      if (file) onAudioLoad(file);
+    };
+    audioLabel.appendChild(audioInput);
+  
+    const blendLabel = document.createElement('label');
+    blendLabel.textContent = 'Blendshapes (.bs.json): ';
+    blendLabel.style.display = 'block';
+    blendLabel.style.marginTop = '0.5em';
+    const blendInput = document.createElement('input');
+    blendInput.type = 'file';
+    blendInput.accept = '.json,.bs.json';
+    blendInput.onchange = () => {
+      const file = blendInput.files[0];
+      if (file) onBlendshapeLoad(file);
+    };
+    blendLabel.appendChild(blendInput);
+  
+    container.appendChild(audioLabel);
+    container.appendChild(blendLabel);
   }
   
