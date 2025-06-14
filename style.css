@@ -1,0 +1,38 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #111;
+    color: white;
+    font-family: sans-serif;
+  }
+  canvas {
+    display: block;
+  }
+  #sliderContainer {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #222;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .mesh-group {
+    margin-bottom: 1em;
+  }
+  .mesh-group h3 {
+    margin: 0 0 5px 0;
+    font-size: 14px;
+    color: #6cf;
+  }
+  .slider-group {
+    margin: 4px 0;
+  }
+  .slider-group label {
+    font-size: 12px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  
