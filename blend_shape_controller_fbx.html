@@ -40,9 +40,9 @@
     const loader = new FBXLoader();
     const morphMeshes = [];
 
-    function createSlidersForMesh(mesh) {
-      const container = document.getElementById('sliderContainer');
+    const sliderContainer = document.getElementById('sliderContainer');
 
+    function createSlidersForMesh(mesh) {
       const groupDiv = document.createElement('div');
       groupDiv.className = 'mesh-group';
 
@@ -76,13 +76,11 @@
         groupDiv.appendChild(sliderGroup);
       });
 
-      container.appendChild(groupDiv);
+      sliderContainer.appendChild(groupDiv);
     }
 
     loader.load('./Ally Face Head Model with hair.fbx', (fbx) => {
-      // fbx.scale.set(0.05, 0.05, 0.05);
       fbx.scale.set(4, 4, 4);
-    //   fbx.rotation.y = Math.PI;
       scene.add(fbx);
 
       fbx.traverse((child) => {
@@ -99,6 +97,84 @@
       console.error('Error loading FBX:', err);
     });
 
+    function applyBlendshapeFrame(frame) {
+      morphMeshes.forEach(mesh => {
+        const influences = mesh.morphTargetInfluences;
+        const dict = mesh.morphTargetDictionary;
+        Object.entries(dict).forEach(([name, index], i) => {
+          if (i < frame.length) {
+            influences[index] = frame[i];
+          }
+        });
+      });
+    }
+
+    // Animation controls
+    let animationData = [];
+    let frameDelay = 100; // milliseconds (calculated)
+    let totalDurationSec = 2; // default total animation duration
+    let isPlaying = false;
+
+    async function playAnimation() {
+      if (!animationData.length || isPlaying) return;
+      isPlaying = true;
+
+      frameDelay = (totalDurationSec * 1000) / animationData.length;
+
+      for (let i = 0; i < animationData.length; i++) {
+        applyBlendshapeFrame(animationData[i]);
+        await new Promise(resolve => setTimeout(resolve, frameDelay));
+      }
+
+      isPlaying = false;
+    }
+
+    // Animation UI
+    const controlsDiv = document.createElement('div');
+    controlsDiv.style.marginTop = '1em';
+
+    const input = document.createElement('textarea');
+    input.placeholder = 'Paste JSON blendshape sequence here';
+    input.rows = 6;
+    input.cols = 40;
+    input.style.width = '100%';
+    controlsDiv.appendChild(input);
+
+    // Total Duration input
+    const durationLabel = document.createElement('label');
+    durationLabel.textContent = 'Total Duration (seconds): ';
+    durationLabel.style.display = 'block';
+    durationLabel.style.marginTop = '0.5em';
+
+    const durationInput = document.createElement('input');
+    durationInput.type = 'number';
+    durationInput.value = totalDurationSec;
+    durationInput.min = 0.1;
+    durationInput.step = 0.1;
+    durationInput.style.width = '60px';
+    durationInput.oninput = () => {
+      totalDurationSec = parseFloat(durationInput.value);
+    };
+    durationLabel.appendChild(durationInput);
+    controlsDiv.appendChild(durationLabel);
+
+    const playBtn = document.createElement('button');
+    playBtn.textContent = 'Play Animation';
+    playBtn.style.marginTop = '0.5em';
+    playBtn.onclick = () => {
+      try {
+        animationData = JSON.parse(input.value);
+        if (!Array.isArray(animationData) || animationData.length === 0) throw new Error();
+        playAnimation();
+      } catch (e) {
+        alert('Invalid JSON format!');
+        console.error(e);
+      }
+    };
+    controlsDiv.appendChild(playBtn);
+
+    sliderContainer.appendChild(controlsDiv);
+
     function animate() {
       requestAnimationFrame(animate);
       renderer.render(scene, camera);
@@ -106,5 +182,6 @@
 
     animate();
   </script>
+
 </body>
 </html>
