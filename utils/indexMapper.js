@@ -1,3 +1,58 @@
+export const blendshapeIndexMap2 = {
+  0: 50,  // EyeBlinkLeft → eyeBlinkLeft
+  1: 23,  // EyeLookDownLeft → eyeLookDownLeft
+  2: 27,  // EyeLookInLeft → eyeLookInLeft
+  3: 29,  // EyeLookOutLeft → eyeLookOutLeft
+  4: 25,  // EyeLookUpLeft → eyeLookUpLeft
+  5: 5,   // EyeSquintLeft → eyeSquintLeft
+  6: 7,   // EyeWideLeft → eyeWideLeft
+  7: 51,  // EyeBlinkRight → eyeBlinkRight
+  8: 24,  // EyeLookDownRight → eyeLookDownRight
+  9: 28,  // EyeLookInRight → eyeLookInRight
+  10: 30, // EyeLookOutRight → eyeLookOutRight
+  11: 26, // EyeLookUpRight → eyeLookUpRight
+  12: 6,  // EyeSquintRight → eyeSquintRight
+  13: 8,  // EyeWideRight → eyeWideRight
+  14: 9,  // JawForward → jawForward
+  15: 10, // JawLeft → jawLeft
+  16: 11, // JawRight → jawRight
+  17: 34, // JawOpen → jawOpen
+  18: 35, // MouthClose → mouthClose
+  19: 36, // MouthFunnel → mouthFunnel
+  20: 14, // MouthPucker → mouthPucker
+  21: 21, // MouthLeft → mouthLeft
+  22: 22, // MouthRight → mouthRight
+  23: 47, // MouthSmileLeft → mouthSmileLeft
+  24: 48, // MouthSmileRight → mouthSmileRight
+  25: 12, // MouthFrownLeft → mouthFrownLeft
+  26: 13, // MouthFrownRight → mouthFrownRight
+  27: 37, // MouthDimpleLeft → mouthDimpleLeft
+  28: 38, // MouthDimpleRight → mouthDimpleRight
+  29: 39, // MouthStretchLeft → mouthStretchLeft
+  30: 40, // MouthStretchRight → mouthStretchRight
+  31: 41, // MouthRollLower → mouthRollLower
+  32: 42, // MouthRollUpper → mouthRollUpper
+  33: 15, // MouthShrugLower → mouthShrugLower
+  34: 16, // MouthShrugUpper → mouthShrugUpper
+  35: 43, // MouthPressLeft → mouthPressLeft
+  36: 44, // MouthPressRight → mouthPressRight
+  37: 19, // MouthLowerDownLeft → mouthLowerDownLeft
+  38: 20, // MouthLowerDownRight → mouthLowerDownRight
+  39: 45, // MouthUpperUpLeft → mouthUpperUpLeft
+  40: 46, // MouthUpperUpRight → mouthUpperUpRight
+  41: 0,  // BrowDownLeft → browDownLeft
+  42: 1,  // BrowDownRight → browDownRight
+  43: 2,  // BrowInnerUp → browInnerUp
+  44: 3,  // BrowOuterUpLeft → browOuterUpLeft
+  45: 4,  // BrowOuterUpRight → browOuterUpRight
+  46: 31, // CheekPuff → cheekPuff
+  47: 32, // CheekSquintLeft → cheekSquintLeft
+  48: 33, // CheekSquintRight → cheekSquintRight
+  49: 17, // NoseSneerLeft → noseSneerLeft
+  50: 18, // NoseSneerRight → noseSneerRight
+  51: 49  // TongueOut → tongueOut
+};
+
 export const blendshapeIndexMap = {
     0: 12,   // EyeBlinkLeft → EyeBlink_L
     5: 16,   // EyeSquintLeft → EyeSquint_L

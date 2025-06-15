@@ -1,5 +1,6 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { FBXLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { createSlidersForMesh, createAnimationControls } from './ui.js';
 import { playAnimation, setAnimationData, setDelay } from './animation.js';
 import { createFileInputs } from './ui.js';
@@ -8,7 +9,7 @@ import { createFileInputs } from './ui.js';
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0.5, 3);
+camera.position.set(0, 1.5, 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -28,24 +29,66 @@ let blendshapeFrames = [];
 let computedDelay = 100;
 // const container = document.getElementById('sliderContainer');
 
-const loader = new FBXLoader();
-loader.load('./assets/Ally Face Head Model with hair.fbx', (fbx) => {
-  fbx.scale.set(4, 4, 4);
-  scene.add(fbx);
+function loadModel(url) {
+  const ext = url.split('.').pop().toLowerCase();
 
-  fbx.traverse((child) => {
-    if (child.isMesh && child.morphTargetDictionary && child.morphTargetInfluences) {
-      morphMeshes.push(child);
-      createSlidersForMesh(child, sliderContainer);
-    }
-  });
-
-  if (morphMeshes.length === 0) {
-    console.warn('No morph targets found in this model.');
+  let loader;
+  if (ext === 'fbx') {
+    loader = new FBXLoader();
+  } else if (ext === 'gltf' || ext === 'glb') {
+    loader = new GLTFLoader();
+  } else {
+    console.error(`Unsupported model format: ${ext}`);
+    return;
   }
-}, undefined, (err) => {
-  console.error('Error loading FBX:', err);
-});
+
+  loader.load(url, (model) => {
+    let root;
+    if (model.scene) {
+      // GLTF
+      root = model.scene;
+    } else {
+      // FBX
+      root = model;
+    }
+    // root.rotation.y += Math.PI
+    scene.add(root);
+
+    root.traverse((child) => {
+      if (child.isMesh && child.morphTargetDictionary && child.morphTargetInfluences) {
+        morphMeshes.push(child);
+        createSlidersForMesh(child, sliderContainer);
+      }
+    });
+
+    if (morphMeshes.length === 0) {
+      console.warn('No morph targets found in this model.');
+    }
+
+  }, undefined, (err) => {
+    console.error(`Error loading ${ext.toUpperCase()} model:`, err);
+  });
+}
+
+// loader.load('./assets/raccoon_head.fbx', (fbx) => {
+//   // fbx.scale.set(0.04, 0.04, 0.04);
+//   scene.add(fbx);
+
+//   fbx.traverse((child) => {
+//     if (child.isMesh && child.morphTargetDictionary && child.morphTargetInfluences) {
+//       morphMeshes.push(child);
+//       createSlidersForMesh(child, sliderContainer);
+//     }
+//   });
+
+//   if (morphMeshes.length === 0) {
+//     console.warn('No morph targets found in this model.');
+//   }
+// }, undefined, (err) => {
+//   console.error('Error loading FBX:', err);
+// });
+
+loadModel('./assets/Asian_business_woman_ARKit.glb');
 
 createAnimationControls(sliderContainer, {
     onPlay: () => {
@@ -78,6 +121,7 @@ createFileInputs(sliderContainer, {
     const text = await file.text();
     try {
       blendshapeFrames = JSON.parse(text);
+      console.log(blendshapeFrames)
       computeFrameDelay();
     } catch (e) {
       alert('Invalid blendshape JSON.');

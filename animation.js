@@ -1,4 +1,4 @@
-import {blendshapeIndexMap} from './utils/indexMapper.js'
+import {blendshapeIndexMap, blendshapeIndexMap2} from './utils/indexMapper.js'
 let animationData = [];
 let delay = 100;
 let morphMeshes = [];
@@ -20,7 +20,7 @@ function applyBlendshapeFrame(frame) {
         const influences = mesh.morphTargetInfluences;
 
         frame.forEach((value, inputIndex) => {
-            const modelIndex = blendshapeIndexMap[inputIndex];
+            const modelIndex = blendshapeIndexMap2[inputIndex];
             if (modelIndex !== undefined && modelIndex < influences.length) {
                 influences[modelIndex] = value;
             }
