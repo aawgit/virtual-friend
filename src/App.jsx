@@ -10,7 +10,7 @@ import InfoModal from './components/InfoModal';
 function App() {
   const [blendshapeValues, setBlendshapeValues] = useState(new Array(52).fill(0));
   const [morphMeshes, setMorphMeshes] = useState([]);
-  const [modelScale, setModelScale] = useState(4);
+  const [modelScale, setModelScale] = useState(4.4);
   const [modelRotation, setModelRotation] = useState(0);
   const [statsVisible, setStatsVisible] = useState(false);
   const [infoModalVisible, setInfoModalVisible] = useState(false);
