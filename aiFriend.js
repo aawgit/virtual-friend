@@ -96,11 +96,12 @@ export class AiFriend {
       // 4. Jaw animation — amplitude-based when audio is playing, oscillatory fallback otherwise
       const amplitude = this.tts.getAmplitude();
       if (amplitude > 0.01) {
-        // Real audio amplitude drives jaw (always in sync)
-        this.targetInfluences[17] = Math.min(1.0, amplitude * 3.0);
+        // Real audio amplitude drives jaw, scaled to natural range
+        // 1.8x scale: typical amplitude ~0.3–0.5 → jawOpen 0.5–0.9
+        this.targetInfluences[17] = Math.min(0.9, amplitude * 1.8);
       } else if (this.isGenerating || this.isProcessing) {
-        // Mouth moves while generating/waiting — oscillatory fallback
-        this.targetInfluences[17] = ((Math.sin(this.swayTimer * 6) + 1) / 2) * 0.35;
+        // Gentle oscillatory jaw while waiting for audio
+        this.targetInfluences[17] = ((Math.sin(this.swayTimer * 4) + 1) / 2) * 0.2;
       }
 
       this.viewer.morphMeshes.forEach(mesh => {

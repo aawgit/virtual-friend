@@ -1,48 +1,82 @@
 import { getFrameForViseme } from './visemeMapper.js';
 
 /**
- * Converts text into phoneme groups for secondary lip animations.
- * Vowels hold longer, consonants are brief. Spaces are short pauses.
+ * Build a secondary phoneme schedule (mouth shape only, not jaw) for a given duration.
+ * Vowels are held longer; consonants and spaces are brief.
  */
 function buildPhonemeSchedule(text, durationMs) {
-  // Assign relative durations per phoneme
-  const weights = [];
   const chars = Array.from(text);
-  chars.forEach(ch => {
+  const weights = chars.map(ch => {
     const k = ch.toUpperCase();
-    if (/\s/.test(k)) weights.push(0.3);
-    else if (/[AEIOU]/.test(k)) weights.push(1.6);  // Vowels: long
-    else if (/[MBP]/.test(k)) weights.push(0.7);    // Bilabials: quick
-    else weights.push(1.0);                           // Other: normal
+    if (/\s/.test(k)) return 0.3;
+    if (/[AEIOU]/.test(k)) return 1.6;
+    if (/[MBP]/.test(k)) return 0.7;
+    return 1.0;
   });
-
-  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  const total = weights.reduce((s, w) => s + w, 0);
   const schedule = [];
   let cursor = 0;
   chars.forEach((ch, i) => {
-    const hold = (weights[i] / totalWeight) * durationMs;
-    schedule.push({ ch, delay: Math.round(cursor), hold: Math.round(hold) });
+    const hold = (weights[i] / total) * durationMs;
+    schedule.push({ ch, delay: Math.round(cursor) });
     cursor += hold;
   });
   return schedule;
 }
 
 /**
- * TTS using Kokoro (ONNX WASM) running entirely in the browser.
- * Produces an AudioBuffer that is played through a Web Audio AnalyserNode,
- * enabling real-time amplitude measurement for jaw sync.
+ * TTS class — uses a Web Worker running Kokoro (ONNX WASM).
+ * The main thread stays responsive during model loading and audio generation.
  */
 export class TTS {
   constructor() {
-    this._model = null;
-    this._modelLoading = false;
-    this._modelReady = false;
+    this._worker = null;
     this._audioCtx = null;
     this._analyser = null;
     this._source = null;
-    this._scheduleTimeouts = [];
     this._freqData = null;
-    this.onModelProgress = null; // optional: (progress) => void
+    this._scheduleTimeouts = [];
+    this._pendingRequest = null;
+    this._workerReady = false;
+    this.onModelProgress = null;
+    this._initWorker();
+  }
+
+  _initWorker() {
+    // Module workers allow ESM imports inside the worker
+    this._worker = new Worker('./tts-worker.js', { type: 'module' });
+    this._worker.onmessage = (e) => this._handleWorkerMessage(e.data);
+    this._worker.onerror = (err) => {
+      console.error('TTS Worker error:', err);
+      if (this._pendingRequest) {
+        this._pendingRequest.reject(new Error('Worker error'));
+        this._pendingRequest = null;
+      }
+    };
+  }
+
+  _handleWorkerMessage(msg) {
+    switch (msg.type) {
+      case 'progress':
+        if (this.onModelProgress) this.onModelProgress(msg.progress);
+        break;
+      case 'ready':
+        this._workerReady = true;
+        console.log('TTS: Kokoro worker ready.');
+        break;
+      case 'result':
+        if (this._pendingRequest && this._pendingRequest.id === msg.requestId) {
+          this._pendingRequest.resolve({ samples: msg.samples, sampleRate: msg.sampleRate });
+          this._pendingRequest = null;
+        }
+        break;
+      case 'error':
+        if (this._pendingRequest && this._pendingRequest.id === msg.requestId) {
+          this._pendingRequest.reject(new Error(msg.message));
+          this._pendingRequest = null;
+        }
+        break;
+    }
   }
 
   _getAudioCtx() {
@@ -53,89 +87,43 @@ export class TTS {
   }
 
   /**
-   * Lazy-load the Kokoro model (cached in browser after first load).
-   */
-  async _ensureModel() {
-    if (this._modelReady) return;
-    if (this._modelLoading) {
-      // Wait for existing load to finish
-      await new Promise(resolve => {
-        const check = setInterval(() => {
-          if (this._modelReady) { clearInterval(check); resolve(); }
-        }, 200);
-      });
-      return;
-    }
-    this._modelLoading = true;
-
-    try {
-      // Dynamic import so it doesn't block page load
-      const { KokoroTTS } = await import('https://esm.sh/kokoro-js@1.2.1');
-      this._model = await KokoroTTS.from_pretrained(
-        'onnx-community/Kokoro-82M-v1.0-ONNX',
-        {
-          dtype: 'q8',
-          progress_callback: (p) => {
-            if (this.onModelProgress) this.onModelProgress(p);
-          }
-        }
-      );
-      this._modelReady = true;
-      console.log('TTS: Kokoro model ready.');
-    } catch (err) {
-      console.error('TTS: Failed to load Kokoro model:', err);
-      this._modelLoading = false;
-      throw err;
-    }
-    this._modelLoading = false;
-  }
-
-  /**
-   * Returns the current amplitude (0–1) from the active audio analyser.
+   * Returns the current speech amplitude (0–1) to drive jaw animation.
    * Called every frame by the animation loop.
    */
   getAmplitude() {
     if (!this._analyser) return 0;
-    if (!this._freqData) {
-      this._freqData = new Uint8Array(this._analyser.frequencyBinCount);
-    }
+    if (!this._freqData) this._freqData = new Uint8Array(this._analyser.frequencyBinCount);
     this._analyser.getByteFrequencyData(this._freqData);
-
-    // Focus on speech-range frequencies (roughly 100–4000 Hz)
-    // With fftSize=256 and sampleRate=24000: each bin = 24000/256 ≈ 93.75 Hz
-    const startBin = 1;  // ~94 Hz
-    const endBin = 43;   // ~4031 Hz
+    // Speech frequency range ~100–4000 Hz, fftSize=256, sampleRate=24000 → 93.75 Hz/bin
     let sum = 0;
-    for (let i = startBin; i < endBin; i++) sum += this._freqData[i];
-    return sum / ((endBin - startBin) * 255);
+    for (let i = 1; i < 43; i++) sum += this._freqData[i];
+    return sum / (42 * 255);
   }
 
   /**
-   * Generate speech with Kokoro, schedule secondary visemes, and play audio.
-   * While the model generates (or on first load), the animation loop's
-   * oscillatory fallback keeps the mouth lively.
+   * Send text to the Worker, receive AudioBuffer, play through AnalyserNode.
+   * Secondary phoneme shapes fire on a schedule derived from audio duration.
    *
-   * @param {string} text - Text to speak.
-   * @param {Function} onSecondaryFrame - (frame: number[]) => void for lip shapes.
+   * @param {string} text
+   * @param {Function} onSecondaryFrame - (frame: number[]) => void, for lip shapes (jaw excluded)
    */
   speak(text, onSecondaryFrame) {
-    return new Promise(async (resolve) => {
-      this.stop(); // Cancel any previous playback
+    return new Promise((resolve) => {
+      this.stop();
 
-      try {
-        await this._ensureModel();
+      const requestId = Date.now().toString();
 
-        console.log('TTS: Generating audio...');
-        const output = await this._model.generate(text, { voice: 'af_bella' });
+      // Promise that the Worker resolves with audio data
+      const audioDataPromise = new Promise((res, rej) => {
+        this._pendingRequest = { id: requestId, resolve: res, reject: rej };
+      });
 
-        // output.audio: Float32Array, output.sampling_rate: e.g. 24000
-        const { audio: samples, sampling_rate: sampleRate } = output;
+      this._worker.postMessage({ type: 'generate', text, voice: 'af_bella', requestId });
+
+      audioDataPromise.then(async ({ samples, sampleRate }) => {
         const durationMs = (samples.length / sampleRate) * 1000;
 
-        // Build secondary viseme schedule (non-jaw shapes) based on audio duration
-        const schedule = buildPhonemeSchedule(text, durationMs);
-
-        // Set up Web Audio pipeline: source → analyser → destination
+        // Set up Web Audio pipeline
         const ctx = this._getAudioCtx();
         if (ctx.state === 'suspended') await ctx.resume();
 
@@ -144,20 +132,20 @@ export class TTS {
 
         this._analyser = ctx.createAnalyser();
         this._analyser.fftSize = 256;
-        this._analyser.smoothingTimeConstant = 0.8;
-        this._freqData = null; // Reset
+        this._analyser.smoothingTimeConstant = 0.85; // Smooth amplitude
+        this._freqData = null;
 
         this._source = ctx.createBufferSource();
         this._source.buffer = buffer;
         this._source.connect(this._analyser);
         this._analyser.connect(ctx.destination);
 
-        // Schedule secondary (lip shape) viseme frames
+        // Schedule secondary (lip shape only) frames
+        const schedule = buildPhonemeSchedule(text, durationMs);
         schedule.forEach(({ ch, delay }) => {
           const t = setTimeout(() => {
             const frame = getFrameForViseme(ch);
-            // Zero out jawOpen (17) — we drive jaw from amplitude, not schedule
-            frame[17] = 0;
+            frame[17] = 0; // Zero jaw — driven by amplitude in animation loop
             onSecondaryFrame(frame);
           }, delay);
           this._scheduleTimeouts.push(t);
@@ -171,14 +159,13 @@ export class TTS {
           resolve();
         };
 
-        console.log(`TTS: Playing ${durationMs.toFixed(0)}ms of audio`);
+        console.log(`TTS: Playing ${(durationMs / 1000).toFixed(1)}s of audio`);
         this._source.start();
 
-      } catch (err) {
-        console.error('TTS: speak() error:', err);
-        this._analyser = null;
+      }).catch(err => {
+        console.error('TTS: Audio generation failed:', err);
         resolve();
-      }
+      });
     });
   }
 
@@ -193,10 +180,11 @@ export class TTS {
       try { this._source.stop(); } catch (_) {}
       this._source = null;
     }
+    if (this._pendingRequest) {
+      this._pendingRequest.reject(new Error('Stopped'));
+      this._pendingRequest = null;
+    }
     this._analyser = null;
     this._freqData = null;
   }
-
-  get isModelReady() { return this._modelReady; }
-  get isModelLoading() { return this._modelLoading; }
 }
