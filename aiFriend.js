@@ -32,6 +32,28 @@ export class AiFriend {
 
     this.blinkTimer = 0;
     this.swayTimer = 0;
+    
+    // Store original camera position to avoid drift
+    this.originalCameraPos = this.viewer.camera.position.clone();
+    
+    // Find head/neck bones for secondary movement
+    this.headBones = [];
+    this.viewer.morphMeshes.forEach(mesh => {
+      // Find the root of the model
+      let root = mesh.parent;
+      while (root && root.parent && root.type !== 'Scene') root = root.parent;
+      
+      if (root) {
+        root.traverse(node => {
+          if (node.isBone && (node.name.toLowerCase().includes('head') || node.name.toLowerCase().includes('neck'))) {
+            if (!this.headBones.includes(node)) {
+              node.originalRotation = node.rotation.clone();
+              this.headBones.push(node);
+            }
+          }
+        });
+      }
+    });
 
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
@@ -46,11 +68,20 @@ export class AiFriend {
         this.blinkTimer = 0;
       }
 
-      // 2. Subtle Camera/Head Sway (if talking)
+      // 2. Subtle Camera Sway (Oscillation, not drift)
+      this.swayTimer += 0.04; 
+      const swayIntensity = 0.001; 
+      this.viewer.camera.position.x = this.originalCameraPos.x + Math.sin(this.swayTimer) * swayIntensity;
+      this.viewer.camera.position.y = this.originalCameraPos.y + Math.cos(this.swayTimer * 0.5) * swayIntensity;
+
+      // 3. Subtle Head/Neck Rotation
       if (this.isProcessing) {
-        this.swayTimer += 0.05;
-        this.viewer.camera.position.x += Math.sin(this.swayTimer) * 0.0005;
-        this.viewer.camera.position.y += Math.cos(this.swayTimer * 0.5) * 0.0005;
+        const rotX = Math.sin(this.swayTimer * 0.5) * 0.02;
+        const rotY = Math.cos(this.swayTimer) * 0.02;
+        this.headBones.forEach(bone => {
+          bone.rotation.x = bone.originalRotation.x + rotX;
+          bone.rotation.y = bone.originalRotation.y + rotY;
+        });
       }
 
       this.viewer.morphMeshes.forEach(mesh => {
@@ -76,10 +107,11 @@ export class AiFriend {
         }
       });
 
-      // Gradually decay target influences back to zero
-      // Slower decay (0.92 instead of 0.8) keeps the mouth open longer during fluid speech
+      // 4. Dynamic Decay
+      // While speaking, use a much slower decay (0.98) to avoid "robotic" snaps
+      const decayFactor = this.isProcessing ? 0.98 : 0.92;
       for (let i = 0; i < 52; i++) {
-        this.targetInfluences[i] *= 0.92;
+        this.targetInfluences[i] *= decayFactor;
       }
     };
     
