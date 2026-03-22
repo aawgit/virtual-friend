@@ -70,7 +70,7 @@ export class TTS {
 
     try {
       // Dynamic import so it doesn't block page load
-      const { KokoroTTS } = await import('https://esm.sh/kokoro-js@0.2.3');
+      const { KokoroTTS } = await import('https://esm.sh/kokoro-js@1.2.1');
       this._model = await KokoroTTS.from_pretrained(
         'onnx-community/Kokoro-82M-v1.0-ONNX',
         {
