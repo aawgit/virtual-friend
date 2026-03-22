@@ -141,6 +141,54 @@ export function createFileInputs(container, callbacks) {
 }
 
 /**
+ * Create a chat interface for AI interaction.
+ * @param {HTMLElement} container - The container to append the chat UI to.
+ * @param {Object} callbacks - onSend callback.
+ */
+export function createChatInterface(container, { onSend, onApiKeyChange }) {
+  const chatDiv = document.createElement('div');
+  chatDiv.className = 'chat-panel';
+  chatDiv.style.marginTop = '24px';
+  chatDiv.innerHTML = `
+    <h3>Chat with AI Friend</h3>
+    <div class="chat-input-row">
+      <input type="text" id="aiChatInput" placeholder="Type a message..." class="chat-input">
+      <button id="aiSendBtn" class="btn btn-primary" style="width: auto; margin: 0; padding: 10px 20px;">Send</button>
+    </div>
+    <div id="aiResponseText" class="ai-response-text"></div>
+    <div class="api-key-group" style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+      <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">OpenAI API Key (Optional)</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-..." class="chat-input" style="font-size: 0.7rem; background: rgba(0,0,0,0.2);">
+    </div>
+  `;
+
+  container.appendChild(chatDiv);
+
+  const input = chatDiv.querySelector('#aiChatInput');
+  const sendBtn = chatDiv.querySelector('#aiSendBtn');
+  const apiKeyInput = chatDiv.querySelector('#apiKeyInput');
+  const responseText = chatDiv.querySelector('#aiResponseText');
+
+  apiKeyInput.value = localStorage.getItem('ai_friend_api_key') || '';
+  apiKeyInput.onchange = () => onApiKeyChange(apiKeyInput.value);
+
+  const handleSend = () => {
+    const msg = input.value.trim();
+    if (msg) {
+      onSend(msg, (text) => {
+        responseText.textContent = text;
+      });
+      input.value = '';
+    }
+  };
+
+  sendBtn.onclick = handleSend;
+  input.onkeypress = (e) => {
+    if (e.key === 'Enter') handleSend();
+  };
+}
+
+/**
  * Update the progress bar during animation.
  * @param {number} percent - The current progress percentage (0-100).
  */

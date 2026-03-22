@@ -1,8 +1,9 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { FBXLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-import { createSlidersForMesh, createAnimationControls, createFileInputs } from './ui.js';
+import { createSlidersForMesh, createAnimationControls, createFileInputs, createChatInterface } from './ui.js';
 import { playAnimation, setAnimationData, setDelay } from './animation.js';
+import { AiFriend } from './aiFriend.js';
 
 /**
  * Main application class to manage the 3D scene and model interactions.
@@ -23,6 +24,8 @@ class Viewer {
     this.audioBuffer = null;
     this.audioContext = null;
     this.blendshapeFrames = [];
+
+    this.aiFriend = new AiFriend(this);
 
     this.container = document.getElementById('sliderContainer');
 
@@ -107,6 +110,11 @@ class Viewer {
     createFileInputs(this.container, {
       onAudioLoad: async (file) => this.handleAudioLoad(file),
       onBlendshapeLoad: async (file) => this.handleBlendshapeLoad(file)
+    });
+
+    createChatInterface(this.container, {
+      onSend: (msg, onResponse) => this.aiFriend.chat(msg, onResponse),
+      onApiKeyChange: (key) => this.aiFriend.setApiKey(key)
     });
   }
 

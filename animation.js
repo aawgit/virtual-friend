@@ -1,5 +1,7 @@
-import { blendshapeIndexMap2 } from './utils/indexMapper.js';
+import { getMeshMapping } from './utils/indexMapper.js';
 import { updateProgressBar } from './ui.js';
+
+let meshMappings = new Map();
 
 let animationData = [];
 let morphMeshes = [];
@@ -14,6 +16,7 @@ let frameDelay = 100; // Expected delay between frames in ms
 export function setAnimationData(data, meshes) {
     animationData = data;
     morphMeshes = meshes;
+    meshMappings.clear(); // Clear cache when mesh changes
 }
 
 /**
@@ -32,8 +35,15 @@ function applyBlendshapeFrame(frame) {
     if (!frame) return;
     morphMeshes.forEach(mesh => {
         const influences = mesh.morphTargetInfluences;
+        
+        let mapping = meshMappings.get(mesh);
+        if (!mapping) {
+            mapping = getMeshMapping(mesh);
+            meshMappings.set(mesh, mapping);
+        }
+
         frame.forEach((value, inputIndex) => {
-            const modelIndex = blendshapeIndexMap2[inputIndex];
+            const modelIndex = mapping[inputIndex];
             if (modelIndex !== undefined && modelIndex < influences.length) {
                 influences[modelIndex] = value;
             }
