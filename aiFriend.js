@@ -1,5 +1,4 @@
 import { TTS } from './tts.js';
-import { getFrameForViseme } from './visemeMapper.js';
 import { getMeshMapping } from './utils/indexMapper.js';
 
 /**
@@ -141,17 +140,16 @@ export class AiFriend {
       const aiResponseText = await this.getLLMResponse(userMessage);
       onResponseText(aiResponseText);
 
-      const onViseme = (char) => {
-        const frame = getFrameForViseme(char);
-        // Set targets - the loop will handle transition and decay
+      // onVisemeFrame receives a full pre-computed blendshape frame array.
+      // tts.js schedules these ahead of time for smooth co-articulation.
+      const onVisemeFrame = (frame) => {
         for (let i = 0; i < 52; i++) {
-          if (frame[i] > 0) {
-            this.targetInfluences[i] = frame[i];
-          }
+          // Replace entire target, not just non-zero values, so silent frames close the mouth
+          this.targetInfluences[i] = frame[i];
         }
       };
 
-      await this.tts.speak(aiResponseText, onViseme);
+      await this.tts.speak(aiResponseText, onVisemeFrame);
       
     } catch (error) {
       console.error('AI Friend chat error:', error);

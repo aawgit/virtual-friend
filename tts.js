@@ -1,11 +1,47 @@
+import { getFrameForViseme } from './visemeMapper.js';
+
+/**
+ * Converts text into a sequence of phoneme groups (viseme keys).
+ * Each entry represents a distinct mouth shape we should animate through.
+ * @param {string} text
+ * @returns {string[]} Array of viseme keys (vowel or group key like 'A','M','S' etc.)
+ */
+function textToPhonemes(text) {
+  const phonemes = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i].toUpperCase();
+    if (/\s/.test(ch)) {
+      // Silence between words
+      phonemes.push(' ');
+    } else {
+      phonemes.push(ch);
+    }
+  }
+  return phonemes;
+}
+
+/**
+ * Get the hold duration (ms) for a phoneme.
+ * Vowels are held longer; consonants and spaces are quicker.
+ */
+function getPhonemeHoldMs(phoneme, baseMs) {
+  if (/[AEIOU]/.test(phoneme)) return baseMs * 1.5;  // Vowels: longer
+  if (/[MBP]/.test(phoneme))   return baseMs * 0.8;  // Bilabials: quick snap
+  if (/[FV]/.test(phoneme))    return baseMs * 0.9;
+  if (phoneme === ' ')          return baseMs * 0.5;  // Silence: brief pause
+  return baseMs;                                       // Consonants: normal
+}
+
 /**
  * Text-to-Speech wrapper using the browser's native SpeechSynthesis API.
+ * Uses pre-scheduled viseme timelines for smooth co-articulation.
  */
 export class TTS {
   constructor() {
     this.synth = window.speechSynthesis;
     this.voices = [];
     this.selectedVoice = null;
+    this._stopSchedule = null;
     
     const loadVoices = () => {
       this.voices = this.synth.getVoices();
@@ -19,14 +55,18 @@ export class TTS {
   }
 
   /**
-   * Speak the given text and trigger viseme updates.
+   * Speak the given text and trigger viseme frame updates via co-articulation schedule.
    * @param {string} text - The text to speak.
-   * @param {Function} onViseme - Callback for viseme updates (char).
+   * @param {Function} onVisemeFrame - Callback: (blendshapeFrame: number[]) => void
    */
-  speak(text, onViseme) {
+  speak(text, onVisemeFrame) {
     return new Promise((resolve) => {
       if (this.synth.speaking) {
         this.synth.cancel();
+      }
+      if (this._stopSchedule) {
+        this._stopSchedule();
+        this._stopSchedule = null;
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -34,60 +74,62 @@ export class TTS {
       utterance.rate = 0.9;
       utterance.pitch = 1.0;
 
-      let boundaryDetected = false;
-      let fallbackTimeout = null;
-      let fallbackInterval = null;
+      // Pre-build phoneme timeline
+      const phonemes = textToPhonemes(text);
+      const nonSpacePhonemesCount = phonemes.filter(p => p !== ' ').length;
+      
+      // Estimate total speech duration. ~70ms per phoneme at rate=0.9 empirically.
+      const baseMsPerPhoneme = 70 / utterance.rate;
 
-      utterance.onboundary = (event) => {
-        if (!boundaryDetected) {
-          console.log(`TTS: Native boundary detected: ${event.name}`);
-          boundaryDetected = true;
-          if (fallbackTimeout) clearTimeout(fallbackTimeout);
-          if (fallbackInterval) clearInterval(fallbackInterval);
-        }
+      // Build a list of {frame, delay} objects
+      let cumulativeMs = 0;
+      const schedule = phonemes.map(phoneme => {
+        const holdMs = getPhonemeHoldMs(phoneme, baseMsPerPhoneme);
+        const entry = { phoneme, frame: getFrameForViseme(phoneme === ' ' ? 'default' : phoneme), delay: cumulativeMs };
+        cumulativeMs += holdMs;
+        return entry;
+      });
 
-        if (event.name === 'word') {
-          const word = text.slice(event.charIndex).split(/\s/)[0];
-          if (!word) return;
-          word.split('').forEach((char, i) => {
-            setTimeout(() => onViseme(char), i * 60);
-          });
-        } else if (event.name === 'char') {
-          onViseme(text.charAt(event.charIndex));
-        }
+      let timeouts = [];
+      let started = false;
+
+      const startSchedule = () => {
+        if (started) return;
+        started = true;
+        console.log(`TTS: Dispatching ${schedule.length} viseme frames over ~${cumulativeMs}ms`);
+
+        schedule.forEach(({ frame, delay }) => {
+          const t = setTimeout(() => onVisemeFrame(frame), delay);
+          timeouts.push(t);
+        });
+      };
+
+      this._stopSchedule = () => {
+        timeouts.forEach(clearTimeout);
+        timeouts = [];
       };
 
       utterance.onstart = () => {
         console.log('TTS: Speech started');
-        // If no boundary events are detected within 500ms of starting, use fallback
-        fallbackTimeout = setTimeout(() => {
-          if (!boundaryDetected) {
-            console.warn('TTS: No native boundaries, starting manual fallback loop.');
-            let charIndex = 0;
-            fallbackInterval = setInterval(() => {
-              if (charIndex < text.length) {
-                onViseme(text.charAt(charIndex));
-                charIndex++;
-              } else {
-                clearInterval(fallbackInterval);
-              }
-            }, 80); 
-          }
-        }, 500);
+        startSchedule();
       };
+
+      // Fallback: if onstart never fires, kick off after 200ms
+      const fallbackStart = setTimeout(() => startSchedule(), 200);
 
       utterance.onend = () => {
         console.log('TTS: Speech ended');
-        if (fallbackTimeout) clearTimeout(fallbackTimeout);
-        if (fallbackInterval) clearInterval(fallbackInterval);
-        setTimeout(() => onViseme(' '), 100); 
+        clearTimeout(fallbackStart);
+        this._stopSchedule = null;
+        // Trigger a neutral close after speech
+        setTimeout(() => onVisemeFrame(getFrameForViseme(' ')), 150);
         resolve();
       };
 
       utterance.onerror = (err) => {
+        clearTimeout(fallbackStart);
         console.error('TTS: Speech error:', err);
-        if (fallbackTimeout) clearTimeout(fallbackTimeout);
-        if (fallbackInterval) clearInterval(fallbackInterval);
+        this._stopSchedule = null;
         resolve();
       };
 
@@ -97,6 +139,10 @@ export class TTS {
   }
 
   stop() {
+    if (this._stopSchedule) {
+      this._stopSchedule();
+      this._stopSchedule = null;
+    }
     this.synth.cancel();
   }
 }
