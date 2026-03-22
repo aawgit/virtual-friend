@@ -1,5 +1,6 @@
 import { TTS } from './tts.js';
 import { getMeshMapping } from './utils/indexMapper.js';
+import { setTtsStatus } from './ui.js';
 
 /**
  * AI Friend Coordinator
@@ -9,8 +10,17 @@ export class AiFriend {
   constructor(viewer) {
     this.viewer = viewer;
     this.tts = new TTS();
+    this.tts.onModelProgress = (p) => {
+      if (p.status === 'progress') {
+        const pct = p.progress ? p.progress.toFixed(0) : '...';
+        setTtsStatus(`Loading voice model: ${pct}% (${p.file || ''})`);
+      } else if (p.status === 'done') {
+        setTtsStatus(null);
+      }
+    };
     this.apiKey = localStorage.getItem('ai_friend_api_key') || '';
     this.isProcessing = false;
+    this.isGenerating = false;
     
     // Animation state
     this.targetInfluences = new Array(52).fill(0);
@@ -57,11 +67,11 @@ export class AiFriend {
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
       
-      const deltaTime = 16.6; // Approx ms per frame at 60fps
+      const deltaTime = 16.6;
       
       // 1. Automatic Blinking Logic
       this.blinkTimer += deltaTime;
-      if (this.blinkTimer > 3000 + Math.random() * 2000) { // Blink every 3-5 seconds
+      if (this.blinkTimer > 3000 + Math.random() * 2000) {
         this.targetInfluences[0] = 1.0; // eyeBlinkLeft
         this.targetInfluences[7] = 1.0; // eyeBlinkRight
         this.blinkTimer = 0;
@@ -83,6 +93,16 @@ export class AiFriend {
         });
       }
 
+      // 4. Jaw animation — amplitude-based when audio is playing, oscillatory fallback otherwise
+      const amplitude = this.tts.getAmplitude();
+      if (amplitude > 0.01) {
+        // Real audio amplitude drives jaw (always in sync)
+        this.targetInfluences[17] = Math.min(1.0, amplitude * 3.0);
+      } else if (this.isGenerating || this.isProcessing) {
+        // Mouth moves while generating/waiting — oscillatory fallback
+        this.targetInfluences[17] = ((Math.sin(this.swayTimer * 6) + 1) / 2) * 0.35;
+      }
+
       this.viewer.morphMeshes.forEach(mesh => {
         const influences = mesh.morphTargetInfluences;
         if (!influences) return;
@@ -100,17 +120,19 @@ export class AiFriend {
           const target = this.targetInfluences[i];
           const current = influences[modelIndex];
           
-          // Smoother lambda: faster opening (0.6), slower closing (0.2)
-          const lambda = target > current ? 0.6 : 0.2;
+          // Jaw (17): faster response to audio; other shapes: slower for flow
+          const lambda = i === 17
+            ? (target > current ? 0.8 : 0.4)
+            : (target > current ? 0.5 : 0.15);
           influences[modelIndex] = current + (target - current) * lambda;
         }
       });
 
-      // 4. Dynamic Decay
-      // While speaking, use a much slower decay (0.98) to avoid "robotic" snaps
-      const decayFactor = this.isProcessing ? 0.98 : 0.92;
+      // Decay: jaw decays quickly after sound stops; other shapes linger
+      const isActive = this.isProcessing || amplitude > 0.01;
       for (let i = 0; i < 52; i++) {
-        this.targetInfluences[i] *= decayFactor;
+        const decay = (i === 17) ? 0.85 : (isActive ? 0.97 : 0.92);
+        this.targetInfluences[i] *= decay;
       }
     };
     
@@ -140,16 +162,18 @@ export class AiFriend {
       const aiResponseText = await this.getLLMResponse(userMessage);
       onResponseText(aiResponseText);
 
-      // onVisemeFrame receives a full pre-computed blendshape frame array.
-      // tts.js schedules these ahead of time for smooth co-articulation.
-      const onVisemeFrame = (frame) => {
+      // onSecondaryFrame receives pre-scheduled lip shapes (jaw excluded)
+      // Amplitude-based jaw is handled directly in the animation loop
+      const onSecondaryFrame = (frame) => {
         for (let i = 0; i < 52; i++) {
-          // Replace entire target, not just non-zero values, so silent frames close the mouth
-          this.targetInfluences[i] = frame[i];
+          if (i === 17) continue; // Skip jaw — driven by amplitude
+          if (frame[i] > 0) this.targetInfluences[i] = frame[i];
         }
       };
 
-      await this.tts.speak(aiResponseText, onVisemeFrame);
+      this.isGenerating = true;
+      await this.tts.speak(aiResponseText, onSecondaryFrame);
+      this.isGenerating = false;
       
     } catch (error) {
       console.error('AI Friend chat error:', error);

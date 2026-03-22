@@ -206,3 +206,31 @@ export function updateProgressBar(percent) {
     }
   }
 }
+
+/**
+ * Show/update a persistent TTS model loading status message.
+ * @param {string|null} message - Message to show, or null to hide.
+ */
+export function setTtsStatus(message) {
+  let el = document.getElementById('ttsStatusMsg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ttsStatusMsg';
+    el.style.cssText = `
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: rgba(30,30,60,0.92); color: #a0c4ff;
+      border: 1px solid rgba(100,140,255,0.3); border-radius: 8px;
+      padding: 8px 20px; font-size: 0.8rem; z-index: 9999;
+      backdrop-filter: blur(8px); transition: opacity 0.3s;
+    `;
+    document.body.appendChild(el);
+  }
+  if (message) {
+    el.textContent = message;
+    el.style.opacity = '1';
+    el.style.display = 'block';
+  } else {
+    el.style.opacity = '0';
+    setTimeout(() => { el.style.display = 'none'; }, 300);
+  }
+}

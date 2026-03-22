@@ -1,148 +1,202 @@
 import { getFrameForViseme } from './visemeMapper.js';
 
 /**
- * Converts text into a sequence of phoneme groups (viseme keys).
- * Each entry represents a distinct mouth shape we should animate through.
- * @param {string} text
- * @returns {string[]} Array of viseme keys (vowel or group key like 'A','M','S' etc.)
+ * Converts text into phoneme groups for secondary lip animations.
+ * Vowels hold longer, consonants are brief. Spaces are short pauses.
  */
-function textToPhonemes(text) {
-  const phonemes = [];
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i].toUpperCase();
-    if (/\s/.test(ch)) {
-      // Silence between words
-      phonemes.push(' ');
-    } else {
-      phonemes.push(ch);
-    }
-  }
-  return phonemes;
+function buildPhonemeSchedule(text, durationMs) {
+  // Assign relative durations per phoneme
+  const weights = [];
+  const chars = Array.from(text);
+  chars.forEach(ch => {
+    const k = ch.toUpperCase();
+    if (/\s/.test(k)) weights.push(0.3);
+    else if (/[AEIOU]/.test(k)) weights.push(1.6);  // Vowels: long
+    else if (/[MBP]/.test(k)) weights.push(0.7);    // Bilabials: quick
+    else weights.push(1.0);                           // Other: normal
+  });
+
+  const totalWeight = weights.reduce((s, w) => s + w, 0);
+  const schedule = [];
+  let cursor = 0;
+  chars.forEach((ch, i) => {
+    const hold = (weights[i] / totalWeight) * durationMs;
+    schedule.push({ ch, delay: Math.round(cursor), hold: Math.round(hold) });
+    cursor += hold;
+  });
+  return schedule;
 }
 
 /**
- * Get the hold duration (ms) for a phoneme.
- * Vowels are held longer; consonants and spaces are quicker.
- */
-function getPhonemeHoldMs(phoneme, baseMs) {
-  if (/[AEIOU]/.test(phoneme)) return baseMs * 1.5;  // Vowels: longer
-  if (/[MBP]/.test(phoneme))   return baseMs * 0.8;  // Bilabials: quick snap
-  if (/[FV]/.test(phoneme))    return baseMs * 0.9;
-  if (phoneme === ' ')          return baseMs * 0.5;  // Silence: brief pause
-  return baseMs;                                       // Consonants: normal
-}
-
-/**
- * Text-to-Speech wrapper using the browser's native SpeechSynthesis API.
- * Uses pre-scheduled viseme timelines for smooth co-articulation.
+ * TTS using Kokoro (ONNX WASM) running entirely in the browser.
+ * Produces an AudioBuffer that is played through a Web Audio AnalyserNode,
+ * enabling real-time amplitude measurement for jaw sync.
  */
 export class TTS {
   constructor() {
-    this.synth = window.speechSynthesis;
-    this.voices = [];
-    this.selectedVoice = null;
-    this._stopSchedule = null;
-    
-    const loadVoices = () => {
-      this.voices = this.synth.getVoices();
-      this.selectedVoice = this.voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || this.voices[0];
-    };
-    
-    if (this.synth.onvoiceschanged !== undefined) {
-      this.synth.onvoiceschanged = loadVoices;
+    this._model = null;
+    this._modelLoading = false;
+    this._modelReady = false;
+    this._audioCtx = null;
+    this._analyser = null;
+    this._source = null;
+    this._scheduleTimeouts = [];
+    this._freqData = null;
+    this.onModelProgress = null; // optional: (progress) => void
+  }
+
+  _getAudioCtx() {
+    if (!this._audioCtx || this._audioCtx.state === 'closed') {
+      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
-    loadVoices();
+    return this._audioCtx;
   }
 
   /**
-   * Speak the given text and trigger viseme frame updates via co-articulation schedule.
-   * @param {string} text - The text to speak.
-   * @param {Function} onVisemeFrame - Callback: (blendshapeFrame: number[]) => void
+   * Lazy-load the Kokoro model (cached in browser after first load).
    */
-  speak(text, onVisemeFrame) {
-    return new Promise((resolve) => {
-      if (this.synth.speaking) {
-        this.synth.cancel();
-      }
-      if (this._stopSchedule) {
-        this._stopSchedule();
-        this._stopSchedule = null;
-      }
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.voice = this.selectedVoice;
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
-
-      // Pre-build phoneme timeline
-      const phonemes = textToPhonemes(text);
-      const nonSpacePhonemesCount = phonemes.filter(p => p !== ' ').length;
-      
-      // Estimate total speech duration. ~70ms per phoneme at rate=0.9 empirically.
-      const baseMsPerPhoneme = 70 / utterance.rate;
-
-      // Build a list of {frame, delay} objects
-      let cumulativeMs = 0;
-      const schedule = phonemes.map(phoneme => {
-        const holdMs = getPhonemeHoldMs(phoneme, baseMsPerPhoneme);
-        const entry = { phoneme, frame: getFrameForViseme(phoneme === ' ' ? 'default' : phoneme), delay: cumulativeMs };
-        cumulativeMs += holdMs;
-        return entry;
+  async _ensureModel() {
+    if (this._modelReady) return;
+    if (this._modelLoading) {
+      // Wait for existing load to finish
+      await new Promise(resolve => {
+        const check = setInterval(() => {
+          if (this._modelReady) { clearInterval(check); resolve(); }
+        }, 200);
       });
+      return;
+    }
+    this._modelLoading = true;
 
-      let timeouts = [];
-      let started = false;
+    try {
+      // Dynamic import so it doesn't block page load
+      const { KokoroTTS } = await import('https://esm.sh/kokoro-js@0.2.3');
+      this._model = await KokoroTTS.from_pretrained(
+        'onnx-community/Kokoro-82M-v1.0-ONNX',
+        {
+          dtype: 'q8',
+          progress_callback: (p) => {
+            if (this.onModelProgress) this.onModelProgress(p);
+          }
+        }
+      );
+      this._modelReady = true;
+      console.log('TTS: Kokoro model ready.');
+    } catch (err) {
+      console.error('TTS: Failed to load Kokoro model:', err);
+      this._modelLoading = false;
+      throw err;
+    }
+    this._modelLoading = false;
+  }
 
-      const startSchedule = () => {
-        if (started) return;
-        started = true;
-        console.log(`TTS: Dispatching ${schedule.length} viseme frames over ~${cumulativeMs}ms`);
+  /**
+   * Returns the current amplitude (0–1) from the active audio analyser.
+   * Called every frame by the animation loop.
+   */
+  getAmplitude() {
+    if (!this._analyser) return 0;
+    if (!this._freqData) {
+      this._freqData = new Uint8Array(this._analyser.frequencyBinCount);
+    }
+    this._analyser.getByteFrequencyData(this._freqData);
 
-        schedule.forEach(({ frame, delay }) => {
-          const t = setTimeout(() => onVisemeFrame(frame), delay);
-          timeouts.push(t);
+    // Focus on speech-range frequencies (roughly 100–4000 Hz)
+    // With fftSize=256 and sampleRate=24000: each bin = 24000/256 ≈ 93.75 Hz
+    const startBin = 1;  // ~94 Hz
+    const endBin = 43;   // ~4031 Hz
+    let sum = 0;
+    for (let i = startBin; i < endBin; i++) sum += this._freqData[i];
+    return sum / ((endBin - startBin) * 255);
+  }
+
+  /**
+   * Generate speech with Kokoro, schedule secondary visemes, and play audio.
+   * While the model generates (or on first load), the animation loop's
+   * oscillatory fallback keeps the mouth lively.
+   *
+   * @param {string} text - Text to speak.
+   * @param {Function} onSecondaryFrame - (frame: number[]) => void for lip shapes.
+   */
+  speak(text, onSecondaryFrame) {
+    return new Promise(async (resolve) => {
+      this.stop(); // Cancel any previous playback
+
+      try {
+        await this._ensureModel();
+
+        console.log('TTS: Generating audio...');
+        const output = await this._model.generate(text, { voice: 'af_bella' });
+
+        // output.audio: Float32Array, output.sampling_rate: e.g. 24000
+        const { audio: samples, sampling_rate: sampleRate } = output;
+        const durationMs = (samples.length / sampleRate) * 1000;
+
+        // Build secondary viseme schedule (non-jaw shapes) based on audio duration
+        const schedule = buildPhonemeSchedule(text, durationMs);
+
+        // Set up Web Audio pipeline: source → analyser → destination
+        const ctx = this._getAudioCtx();
+        if (ctx.state === 'suspended') await ctx.resume();
+
+        const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+        buffer.copyToChannel(samples, 0);
+
+        this._analyser = ctx.createAnalyser();
+        this._analyser.fftSize = 256;
+        this._analyser.smoothingTimeConstant = 0.8;
+        this._freqData = null; // Reset
+
+        this._source = ctx.createBufferSource();
+        this._source.buffer = buffer;
+        this._source.connect(this._analyser);
+        this._analyser.connect(ctx.destination);
+
+        // Schedule secondary (lip shape) viseme frames
+        schedule.forEach(({ ch, delay }) => {
+          const t = setTimeout(() => {
+            const frame = getFrameForViseme(ch);
+            // Zero out jawOpen (17) — we drive jaw from amplitude, not schedule
+            frame[17] = 0;
+            onSecondaryFrame(frame);
+          }, delay);
+          this._scheduleTimeouts.push(t);
         });
-      };
 
-      this._stopSchedule = () => {
-        timeouts.forEach(clearTimeout);
-        timeouts = [];
-      };
+        this._source.onended = () => {
+          this._analyser = null;
+          this._source = null;
+          this._freqData = null;
+          this._clearSchedule();
+          resolve();
+        };
 
-      utterance.onstart = () => {
-        console.log('TTS: Speech started');
-        startSchedule();
-      };
+        console.log(`TTS: Playing ${durationMs.toFixed(0)}ms of audio`);
+        this._source.start();
 
-      // Fallback: if onstart never fires, kick off after 200ms
-      const fallbackStart = setTimeout(() => startSchedule(), 200);
-
-      utterance.onend = () => {
-        console.log('TTS: Speech ended');
-        clearTimeout(fallbackStart);
-        this._stopSchedule = null;
-        // Trigger a neutral close after speech
-        setTimeout(() => onVisemeFrame(getFrameForViseme(' ')), 150);
+      } catch (err) {
+        console.error('TTS: speak() error:', err);
+        this._analyser = null;
         resolve();
-      };
-
-      utterance.onerror = (err) => {
-        clearTimeout(fallbackStart);
-        console.error('TTS: Speech error:', err);
-        this._stopSchedule = null;
-        resolve();
-      };
-
-      console.log(`TTS: Speaking text (${text.length} chars)`);
-      this.synth.speak(utterance);
+      }
     });
   }
 
-  stop() {
-    if (this._stopSchedule) {
-      this._stopSchedule();
-      this._stopSchedule = null;
-    }
-    this.synth.cancel();
+  _clearSchedule() {
+    this._scheduleTimeouts.forEach(clearTimeout);
+    this._scheduleTimeouts = [];
   }
+
+  stop() {
+    this._clearSchedule();
+    if (this._source) {
+      try { this._source.stop(); } catch (_) {}
+      this._source = null;
+    }
+    this._analyser = null;
+    this._freqData = null;
+  }
+
+  get isModelReady() { return this._modelReady; }
+  get isModelLoading() { return this._modelLoading; }
 }
