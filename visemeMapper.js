@@ -5,20 +5,20 @@ export const visemeMap = {
   // Silent / Neutral
   'default': { 18: 0.1 }, 
   
-  // Vowels - Increased weights for better visibility
-  'A': { 17: 0.8, 19: 0.3 }, // Ah
-  'E': { 17: 0.4, 23: 0.5, 24: 0.5 }, // Eh
-  'I': { 17: 0.3, 23: 0.7, 24: 0.7 }, // Ee
-  'O': { 17: 0.5, 21: 0.7, 22: 0.7, 19: 0.9 }, // Oh
-  'U': { 17: 0.3, 21: 0.9, 22: 0.9, 20: 0.9 }, // Oo
+  // Vowels - Refined for natural shapes
+  'A': { 17: 0.8, 19: 0.1, 33: 0.2 }, // Ah (JawOpen + slight funnel + lower shrug)
+  'E': { 17: 0.4, 29: 0.4, 30: 0.4, 33: 0.2 }, // Eh (JawOpen + stretch + lower shrug)
+  'I': { 17: 0.2, 29: 0.7, 30: 0.7, 34: 0.3 }, // Ee (JawOpen low + high stretch + upper shrug)
+  'O': { 17: 0.5, 19: 0.9, 20: 0.4 }, // Oh (JawOpen + high funnel + pucker)
+  'U': { 17: 0.3, 20: 0.9, 19: 0.5 }, // Oo (JawOpen low + high pucker + funnel)
   
   // Consonants
-  'M': { 18: 1.0, 35: 0.7, 36: 0.7 }, // M, B, P
-  'F': { 18: 0.8, 31: 0.7, 33: 0.3 }, // F, V
-  'L': { 17: 0.5, 51: 0.4 }, // L
-  'S': { 17: 0.2, 23: 0.3, 24: 0.3, 35: 0.4, 36: 0.4 }, // S, T, Z
-  'R': { 17: 0.3, 19: 0.5, 20: 0.3 }, // R
-  'W': { 17: 0.2, 19: 0.8, 20: 0.8 }, // W
+  'M': { 18: 1.0, 35: 0.4, 36: 0.4, 33: 0.3 }, // M, B, P (MouthClose + pressure)
+  'F': { 18: 0.8, 31: 0.6, 32: 0.2 }, // F, V (MouthClose + roll lower)
+  'L': { 17: 0.4, 51: 0.4 }, // L (JawOpen + tongue out)
+  'S': { 17: 0.1, 29: 0.4, 30: 0.4, 35: 0.2, 36: 0.2 }, // S, T, Z (Teeth visible - slight jaw + stretch + press)
+  'R': { 17: 0.2, 19: 0.4, 20: 0.2 }, // R (Slight funnel)
+  'W': { 17: 0.2, 19: 0.7, 20: 0.7 }, // W (Funnel + pucker)
 };
 
 /**

@@ -30,14 +30,33 @@ export class AiFriend {
   startAnimationLoop() {
     if (this.animationId) return;
 
+    this.blinkTimer = 0;
+    this.swayTimer = 0;
+
     const animate = () => {
       this.animationId = requestAnimationFrame(animate);
       
+      const deltaTime = 16.6; // Approx ms per frame at 60fps
+      
+      // 1. Automatic Blinking Logic
+      this.blinkTimer += deltaTime;
+      if (this.blinkTimer > 3000 + Math.random() * 2000) { // Blink every 3-5 seconds
+        this.targetInfluences[0] = 1.0; // eyeBlinkLeft
+        this.targetInfluences[7] = 1.0; // eyeBlinkRight
+        this.blinkTimer = 0;
+      }
+
+      // 2. Subtle Camera/Head Sway (if talking)
+      if (this.isProcessing) {
+        this.swayTimer += 0.05;
+        this.viewer.camera.position.x += Math.sin(this.swayTimer) * 0.0005;
+        this.viewer.camera.position.y += Math.cos(this.swayTimer * 0.5) * 0.0005;
+      }
+
       this.viewer.morphMeshes.forEach(mesh => {
         const influences = mesh.morphTargetInfluences;
         if (!influences) return;
 
-        // Get or build mapping for this mesh
         let mapping = this.meshMappings.get(mesh);
         if (!mapping) {
           mapping = getMeshMapping(mesh);
@@ -51,6 +70,7 @@ export class AiFriend {
           const target = this.targetInfluences[i];
           const current = influences[modelIndex];
           
+          // Smoother lambda: faster opening (0.6), slower closing (0.2)
           const lambda = target > current ? 0.6 : 0.2;
           influences[modelIndex] = current + (target - current) * lambda;
         }
