@@ -99,3 +99,11 @@ export const blendshapeIndexMap = {
     50: 49   // NoseSneerRight → Sneer
   };
   
+export function getMeshMapping(mesh) {
+  if (mesh.morphTargetDictionary) {
+    if (mesh.morphTargetDictionary['eyeBlinkLeft'] !== undefined || mesh.morphTargetDictionary['EyeBlinkLeft'] !== undefined) {
+      return blendshapeIndexMap2;
+    }
+  }
+  return blendshapeIndexMap;
+}

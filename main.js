@@ -1,8 +1,9 @@
 import * as THREE from 'https://esm.sh/three@0.160.0';
 import { FBXLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-import { createSlidersForMesh, createAnimationControls, createFileInputs } from './ui.js';
-import { playAnimation, setAnimationData, setDelay } from './animation.js';
+import { createSlidersForMesh, createAnimationControls, createFileInputs, createChatUI } from './ui.js?v=3';
+import { playAnimation, setAnimationData, setDelay } from './animation.js?v=3';
+import { AiFriend } from './aiFriend.js?v=3';
 
 /**
  * Main application class to manage the 3D scene and model interactions.
@@ -25,6 +26,7 @@ class Viewer {
     this.blendshapeFrames = [];
 
     this.container = document.getElementById('sliderContainer');
+    this.chatContainer = document.getElementById('chatContainer');
 
     window.addEventListener('resize', () => this.onWindowResize());
     this.animate();
@@ -89,6 +91,7 @@ class Viewer {
       } else {
         // Re-initialize controls
         this.initControls();
+        this.initChat();
       }
     } catch (err) {
       console.error(`Error loading ${ext.toUpperCase()} model:`, err);
@@ -108,6 +111,33 @@ class Viewer {
       onAudioLoad: async (file) => this.handleAudioLoad(file),
       onBlendshapeLoad: async (file) => this.handleBlendshapeLoad(file)
     });
+  }
+
+  /**
+   * Initialize Chat User Interface.
+   */
+  initChat() {
+    if (!this.chatContainer) return;
+
+    if (!this.aiFriend) {
+      this.aiFriend = new AiFriend(this);
+    }
+
+    const chatUI = createChatUI(this.chatContainer, async (userText) => {
+      // Synchronously unlock TTS on user gesture
+      this.aiFriend.tts.init();
+
+      chatUI.appendMessage('User', userText);
+      chatUI.setProcessing(true);
+      
+      await this.aiFriend.chat(userText, (aiText) => {
+        chatUI.appendMessage('AI', aiText);
+      });
+      
+      chatUI.setProcessing(false);
+    });
+
+    chatUI.appendMessage('AI', 'Hello! I am ready to chat. Type a message below or turn on your microphone.');
   }
 
   /**

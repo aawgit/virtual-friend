@@ -1,4 +1,4 @@
-import { getFrameForViseme } from './visemeMapper.js';
+import { getFrameForViseme } from './visemeMapper.js?v=3';
 
 /**
  * Assigns relative weight to each character for hold duration.
@@ -60,6 +60,19 @@ export class TTS {
   }
 
   /**
+   * Must be called inside a synchronous UI event handler (click/keydown)
+   * to unlock the SpeechSynthesis API in some browsers.
+   */
+  init() {
+    if (this.synth.speaking) return;
+    const utterance = new SpeechSynthesisUtterance('');
+    utterance.volume = 0;
+    this.synth.speak(utterance);
+    this.synth.resume();
+  }
+
+  /**
+
    * Returns true while speech is actively playing.
    * Used by external code to decide jaw animation mode.
    */

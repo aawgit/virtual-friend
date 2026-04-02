@@ -1,5 +1,5 @@
-import { TTS } from './tts.js';
-import { getMeshMapping } from './utils/indexMapper.js';
+import { TTS } from './tts.js?v=3';
+import { getMeshMapping } from './utils/indexMapper.js?v=3';
 
 /**
  * AI Friend Coordinator
