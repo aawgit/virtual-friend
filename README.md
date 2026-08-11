@@ -10,6 +10,10 @@ A modern web application for synchronizing 3D avatar lip-sync animations with au
 - **Format Support**: Supports both GLTF/GLB and FBX models.
 - **Visual Feedback**: Real-time progress bar during animation playback.
 
+## Current Scope
+
+The app currently focuses on playback of a 3D avatar driven by uploaded audio and uploaded ARKit-style blendshape JSON data. Conversational chat and browser TTS-driven animation experiments have been removed from the main app.
+
 ## Getting Started
 
 ### Prerequisites
@@ -31,7 +35,7 @@ You need a simple web server to serve the files due to CORS restrictions with lo
 2. **Upload Audio**: Click "Audio File (.wav)" to upload your speech clip.
 3. **Upload Blendshapes**: Click "Blendshapes (.json)" to upload the corresponding sequence.
 4. **Play**: Click "Play Animation" to see and hear the synchronized playback.
-5. **Adjust**: Use the sliders on the right to manually tweak any facial expression.
+5. **Adjust**: Use the sliders to manually tweak any facial expression.
 
 ## Blendshape JSON Format
 

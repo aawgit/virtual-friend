@@ -1,6 +1,6 @@
 /**
  * ARKit blendshape indices used:
- *   17 = jawOpen       (driven by oscillator in aiFriend.js — do NOT set here)
+ *   17 = jawOpen
  *   18 = mouthClose
  *   19 = mouthFunnel   (kept LOW to prevent permanent "O" shape)
  *   20 = mouthPucker   (kept LOW)
@@ -35,7 +35,7 @@ export const visemeMap = {
 
 /**
  * Returns a 52-element blendshape frame for a given character.
- * jawOpen (index 17) is always 0 — the animation loop drives it.
+ * jawOpen (index 17) is always 0.
  */
 export function getFrameForViseme(char) {
   const frame = new Array(52).fill(0);
@@ -55,7 +55,6 @@ export function getFrameForViseme(char) {
   for (const [idx, weight] of Object.entries(weights)) {
     frame[parseInt(idx)] = weight;
   }
-  // Always zero jaw — controlled externally
   frame[17] = 0;
   return frame;
 }
